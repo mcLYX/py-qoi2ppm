@@ -8,3 +8,4 @@ So, It runs VERY SLOW, and may has some bugs.
 
 
 Default input file name is "test.qoi".
+RGBA File is not fully supported now.
