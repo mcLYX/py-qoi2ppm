@@ -1,5 +1,5 @@
 # py-qoi2ppm
-A QOI to PPM Format Converter based on Python Completely
+A QOI to PPM Format Converter based on Python.
 
 
 It's Fully Coded with native Python, No additional libs needed.
