@@ -15,12 +15,12 @@ tft.setarea([0,0],[128,160])
 '''
 #解码配置设置
 bytemin=8#加载的最少字节数(8,不要改,除非QOI规范变了)，如果低于该值则继续读文件
-loadstep=384#每次加载和写入多少字节，内存够的可以改大
-cachesize=512#解码后的缓存，超出该值则进行写入后删除，内存够的可以改大
+loadstep=512#每次加载和写入多少字节，内存够的可以改大
+cachesize=1024#解码后的缓存，超出该值则进行写入后删除，内存够的可以改大
 '''
 cache565=b''#16位色缓存
 '''
-pos=-1
+#pos=-1
 #检测文件头
 if f.read(4)!=b'qoif':
     f.close()
@@ -43,76 +43,87 @@ else:
     output.write(bytes(str(width),encoding='ascii')+b' '+bytes(str(height),encoding='ascii')+b'\n255\n')
     
     #创建index
-    index=bytearray(64*channels)
+    index=bytearray(64*4)
     
     #开始图像数据解码
     byte=bytearray(f.read(loadstep))
     cache=b''
+    rgba=b''
     
     while byte:
         
         byte+=bytearray(f.read(loadstep))
         
         while len(byte)>bytemin:
-            pos+=1
+            #pos+=1
             if byte[0]==0b11111110:#RGB
-                cache+=byte[1:4]
-                if channels==4:cache+=b'\xff'
+                rgba=byte[1:4]+(rgba[-1:] if len(rgba)==4 else b'\xff')
+                cache+=rgba[:channels]
                 byte=byte[4:]
                 #input('Detected RGB')
                 
             elif byte[0]==0b11111111:#RGBA
-                cache+=byte[1:5]
+                rgba=byte[1:5]
+                cache+=rgba[:channels]
                 byte=byte[5:]
                 #input('Detected RGBA')
                 
             elif (byte[0]>>6)==0:#INDEX
                 indexp=byte[0]&0b00111111
-                cache+=index[indexp*channels:(1+indexp)*channels]
+                rgba=index[indexp*4:(1+indexp)*4]
+                cache+=rgba[:channels]
                 #del byte[0]
                 byte=byte[1:]
                 #input('Detected INDEX')
                 
             elif (byte[0]>>6)==1:#DIFF
                 #indexp=len(cache)-channels-1
-                cache+=bytes([(cache[-channels] + (byte[0]>>4)%4-2) %256])
-                cache+=bytes([(cache[-channels] + (byte[0]>>2)%4-2) %256])
-                cache+=bytes([(cache[-channels] + byte[0]%4-2) %256])
-                if channels==4:cache+=bytes([cache[-channels]])
+                prev=rgba
+                rgba=bytes([(prev[-4] + (byte[0]>>4)%4-2) %256])
+                rgba+=bytes([(prev[-3] + (byte[0]>>2)%4-2) %256])
+                rgba+=bytes([(prev[-2] + byte[0]%4-2) %256])
+                rgba+=bytes([prev[-1]])
+                cache+=rgba[:channels]
                 #del byte[0]
                 byte=byte[1:]
                 #input('Detected DIFF')
                 
             elif (byte[0]>>6)==2:#LUMA
                 #indexp=len(cache)-channels-1
+                prev=rgba
                 dg=byte[0]%64-32
                 dr,db=(byte[1]>>4)+dg-8,(byte[1]%16)+dg-8
-                cache+=bytes([(cache[-channels] + dr) %256])
-                cache+=bytes([(cache[-channels] + dg) %256])
-                cache+=bytes([(cache[-channels] + db) %256])
-                if channels==4:cache+=bytes([cache[-channels]])
+                rgba=bytes([(prev[-4] + dr) %256])
+                rgba+=bytes([(prev[-3] + dg) %256])
+                rgba+=bytes([(prev[-2] + db) %256])
+                rgba+=bytes([prev[-1]])
+                cache+=rgba[:channels]
                 #del byte[0:2]
                 del dr,dg,db
                 byte=byte[2:]
                 #input('Detected LUMA')
                 
             elif (byte[0]>>6)==3:#RUN
+                prev=rgba
                 for i in range(byte[0]%64+1):
-                    cache+=cache[-channels:] if cache[-channels:] else b'\x00\x00\x00'
+                    rgba=prev[-4:] if prev else b'\x00'*4
+                    cache+=rgba[:channels]
                 #del byte[0]
-                pos+=byte[0]%64
-                
+                #pos+=byte[0]%64
                 byte=byte[1:]
-                
                 #input('Detected RUN')
                 
             #写入INDEX
+            '''
             if channels==3:
                 indexp=(cache[-3]*3+cache[-2]*5+cache[-1]*7+255*11)%64
                 index[indexp*3:indexp*3+3]=cache[-3:]
             elif channels==4:
-                indexp=(cache[-4]*3+cache[-3]*5+cache[-2]*7+cache[-1]*11)%64
-                index[indexp*channels:indexp*channels+4]=cache[-4:]
+            '''
+            #print(rgba)
+            if rgba:
+                indexp=(rgba[-4]*3+rgba[-3]*5+rgba[-2]*7+rgba[-1]*11)%64
+                index[indexp*4:indexp*4+4]=rgba
                 
             #print(cache[-3],cache[-2],cache[-1],len(cache),[pos//128,pos%128],'\n')
             
@@ -150,3 +161,4 @@ else:
                 output.close()
                 byte=b''
                 del cache#,cache565
+                print('转换完毕')
